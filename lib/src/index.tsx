@@ -16,20 +16,6 @@ import { drawTooltip } from "./draw.js";
 import Frame from "./components/Frame.js";
 import Region from "./components/Region.js";
 import TextLabel from "./components/TextLabel.js";
-// Import Tooltip from './components/Tooltip';
-
-export type {
-  ISOCode,
-  SizeOption,
-  DataItem,
-  Data,
-  CountryContext,
-  Props,
-} from "./types.js";
-
-function toValue({ value }: DataItem<string | number>): number {
-  return typeof value === "string" ? 0 : value;
-}
 
 export default function WorldMap<T extends number | string>(
   props: Props<T>,
@@ -56,21 +42,23 @@ export default function WorldMap<T extends number | string>(
     hrefFunction,
     textLabelFunction = () => [],
   } = props;
+
   const windowWidth = useWindowWidth();
 
   // Inits
   const width = typeof size === "number" ? size : responsify(size, windowWidth);
   const height = width * heightRatio;
+
   const [scale, setScale] = useState(1);
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
-
-  const [isDragging, setIsDragging] = React.useState(false); // Track if dragging is active
-  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 }); // Store the starting point of drag
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [cursor, setCursor] = useState("default"); // Manage cursor style
 
   const containerRef = createRef<SVGSVGElement>();
 
-  // Calc min/max values and build country map for direct access
+  // Prepare data and projections
   const countryValueMap = Object.fromEntries(
     data.map(({ country, value }) => [country.toUpperCase(), value]),
   );
@@ -143,31 +131,29 @@ export default function WorldMap<T extends number | string>(
 
   const eventHandlers = {
     onMouseDown(e: React.MouseEvent) {
+      if (scale <= 1) return; // Prevent drag when not zoomed in
       e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(true); // Start dragging
-      setDragStart({ x: e.clientX, y: e.clientY }); // Store initial mouse position
+      setIsDragging(true);
+      setCursor("grabbing");
+      setDragStart({ x: e.clientX, y: e.clientY });
     },
     onMouseMove(e: React.MouseEvent) {
-      if (!isDragging) return;
+      if (!isDragging || scale <= 1) return;
 
-      const dx = e.clientX - dragStart.x; // Calculate horizontal movement
-      const dy = e.clientY - dragStart.y; // Calculate vertical movement
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
 
-      setTranslateX(prev => prev + dx); // Update translation for X-axis
-      setTranslateY(prev => prev + dy); // Update translation for Y-axis
-
-      setDragStart({ x: e.clientX, y: e.clientY }); // Update the start position for the next move
+      setTranslateX((prev) => prev + dx);
+      setTranslateY((prev) => prev + dy);
+      setDragStart({ x: e.clientX, y: e.clientY });
     },
-    onMouseUp(e: React.MouseEvent) {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false); // Stop dragging
+    onMouseUp() {
+      setIsDragging(false);
+      setCursor(scale > 1 ? "grab" : "default");
     },
-    onMouseLeave(_e: React.MouseEvent) {
-      if (isDragging) {
-        setIsDragging(false); // Stop dragging if the mouse leaves the map
-      }
+    onMouseLeave() {
+      if (isDragging) setIsDragging(false);
+      setCursor(scale > 1 ? "grab" : "default");
     },
     onDoubleClick(e: React.MouseEvent) {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -177,17 +163,21 @@ export default function WorldMap<T extends number | string>(
         setTranslateX(0);
         setTranslateY(0);
         setScale(1);
+        setCursor("default");
       } else {
         setTranslateX(2 * translateX - x);
         setTranslateY(2 * translateY - y);
         setScale(scale * 2);
+        setCursor("grab");
       }
     },
   };
 
   // Render the SVG
   return (
-    <figure className="worldmap__figure-container" style={{ backgroundColor }}>
+    <figure
+      className="worldmap__figure-container"
+      style={{ backgroundColor, cursor }}>
       {title && (
         <figcaption className="worldmap__figure-caption">{title}</figcaption>
       )}
@@ -213,6 +203,10 @@ export default function WorldMap<T extends number | string>(
       </svg>
     </figure>
   );
+}
+
+function toValue({ value }: DataItem<string | number>): number {
+  return typeof value === "string" ? 0 : value;
 }
 
 const regions = geoData.features.map((g) => ({ name: g.N, code: g.I }));
