@@ -65,6 +65,9 @@ export default function WorldMap<T extends number | string>(
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
 
+  const [isDragging, setIsDragging] = React.useState(false); // Track if dragging is active
+  const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 }); // Store the starting point of drag
+
   const containerRef = createRef<SVGSVGElement>();
 
   // Calc min/max values and build country map for direct access
@@ -142,6 +145,29 @@ export default function WorldMap<T extends number | string>(
     onMouseDown(e: React.MouseEvent) {
       e.preventDefault();
       e.stopPropagation();
+      setIsDragging(true); // Start dragging
+      setDragStart({ x: e.clientX, y: e.clientY }); // Store initial mouse position
+    },
+    onMouseMove(e: React.MouseEvent) {
+      if (!isDragging) return;
+
+      const dx = e.clientX - dragStart.x; // Calculate horizontal movement
+      const dy = e.clientY - dragStart.y; // Calculate vertical movement
+
+      setTranslateX(prev => prev + dx); // Update translation for X-axis
+      setTranslateY(prev => prev + dy); // Update translation for Y-axis
+
+      setDragStart({ x: e.clientX, y: e.clientY }); // Update the start position for the next move
+    },
+    onMouseUp(e: React.MouseEvent) {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false); // Stop dragging
+    },
+    onMouseLeave(_e: React.MouseEvent) {
+      if (isDragging) {
+        setIsDragging(false); // Stop dragging if the mouse leaves the map
+      }
     },
     onDoubleClick(e: React.MouseEvent) {
       const rect = e.currentTarget.getBoundingClientRect();
