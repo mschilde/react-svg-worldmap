@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, createRef } from "react";
+import { useState, createRef, useRef } from "react";
 import type GeoJSON from "geojson";
 import { geoMercator, geoPath } from "d3-geo";
 import geoData from "./countries.geo.js";
@@ -50,11 +50,11 @@ export default function WorldMap<T extends number | string>(
   const height = width * heightRatio;
 
   const [scale, setScale] = useState(1);
-  const [translateX, setTranslateX] = useState(0);
-  const [translateY, setTranslateY] = useState(0);
+  const translate = useRef({ x: 0, y: 0 }); // Use ref for translation state
+  const dragStart = useRef({ x: 0, y: 0 }); // Store initial mouse position relative to the map
+  const initialTranslate = useRef({ x: 0, y: 0 }); // Store initial translation
+  const [cursor, setCursor] = useState("default");
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [cursor, setCursor] = useState("default"); // Manage cursor style
 
   const containerRef = createRef<SVGSVGElement>();
 
@@ -131,21 +131,45 @@ export default function WorldMap<T extends number | string>(
 
   const eventHandlers = {
     onMouseDown(e: React.MouseEvent) {
-      if (scale <= 1) return; // Prevent drag when not zoomed in
+      if (scale <= 1) return;
       e.preventDefault();
       setIsDragging(true);
       setCursor("grabbing");
-      setDragStart({ x: e.clientX, y: e.clientY });
+
+      // Store initial mouse position relative to the container
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        dragStart.current = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        };
+        initialTranslate.current = { ...translate.current }; // Store initial translation
+      }
     },
     onMouseMove(e: React.MouseEvent) {
       if (!isDragging || scale <= 1) return;
 
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        // Calculate the offset between the current mouse position and the initial mouse position
+        const dx = e.clientX - rect.left - dragStart.current.x;
+        const dy = e.clientY - rect.top - dragStart.current.y;
 
-      setTranslateX((prev) => prev + dx);
-      setTranslateY((prev) => prev + dy);
-      setDragStart({ x: e.clientX, y: e.clientY });
+        // Update the translation relative to the initial offset
+        translate.current = {
+          x: initialTranslate.current.x + dx,
+          y: initialTranslate.current.y + dy,
+        };
+
+        // Apply the translation directly using CSS
+        if (containerRef.current) {
+          containerRef.current.style.transform = `translate(${
+            translate.current.x
+          }px, ${translate.current.y}px) scale(${
+            (width / 960) * scale
+          }) translate(0, 240)`;
+        }
+      }
     },
     onMouseUp() {
       setIsDragging(false);
@@ -160,13 +184,14 @@ export default function WorldMap<T extends number | string>(
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       if (scale === 4) {
-        setTranslateX(0);
-        setTranslateY(0);
+        translate.current = { x: 0, y: 0 }; // Reset translation to (0, 0)
         setScale(1);
         setCursor("default");
       } else {
-        setTranslateX(2 * translateX - x);
-        setTranslateY(2 * translateY - y);
+        translate.current = {
+          x: 2 * translate.current.x - x,
+          y: 2 * translate.current.y - y,
+        };
         setScale(scale * 2);
         setCursor("grab");
       }
@@ -188,9 +213,9 @@ export default function WorldMap<T extends number | string>(
         {...(richInteraction ? eventHandlers : undefined)}>
         {frame && <Frame color={frameColor} />}
         <g
-          transform={`translate(${translateX}, ${translateY}) scale(${
-            (width / 960) * scale
-          }) translate(0, 240)`}
+          transform={`translate(${translate.current.x}, ${
+            translate.current.y
+          }) scale(${(width / 960) * scale}) translate(0, 240)`}
           style={{ transition: "all 0.2s" }}>
           {regionPaths}
         </g>
